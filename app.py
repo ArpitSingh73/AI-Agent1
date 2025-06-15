@@ -1,26 +1,15 @@
 import datetime
 import os.path
-
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from calender_activities.book_slot import create_event
+from calender_activities.check_availability import is_time_free
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
-
-
-def is_time_free(service, start_time, end_time):
-    body = {"timeMin": start_time, "timeMax": end_time, "items": [{"id": "primary"}]}
-    events_result = service.freebusy().query(body=body).execute()
-    busy_times = events_result["calendars"]["primary"]["busy"]
-    return len(busy_times) == 0  # True if free
-
-def create_event(service, event):
-    created_event = service.events().insert(calendarId="primary", body=event).execute()
-    print("Event created: %s" % (created_event.get("htmlLink")))
-
 
 def main():
     """Shows basic usage of the Google Calendar API.
@@ -46,7 +35,6 @@ def main():
     try:
         service = build("calendar", "v3", credentials=creds)
         
-
         # Call the Calendar API
         now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
         print("Getting the upcoming 10 events")
