@@ -4,14 +4,12 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from calender_activities.book_slot import create_event
 from calender_activities.check_availability import is_slot_free
 from llm_activities.user_bot_conversation import extract_date_time
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
-from random import randint
 
 
 def main(chat_history, now):
@@ -39,8 +37,6 @@ def main(chat_history, now):
         service = build("calendar", "v3", credentials=creds)
 
         # Call the Calendar API
-        # now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
-        print("Getting the upcoming 10 events")
         events_result = (
             service.events()
             .list(
@@ -59,17 +55,37 @@ def main(chat_history, now):
         #     return
 
         # # Prints the start and name of the next 10 events
-        # for event in events:
-        #     start = event["start"].get("dateTime", event["start"].get("date"))
-        #     print(start, event["summary"])
+        upcoming_events = []
+        for event in events:
+            start = event["start"].get("dateTime", event["start"].get("date"))
+            upcoming_events.append(str(event["summary"]))
+            print(start, event["summary"])
 
-        response = extract_date_time(chat_history, now)
- 
-        if "insufficient_context" in response["response"]:
-            return {"success": False, "response": "insufficient context"}
+        response = extract_date_time(chat_history, now, upcoming_events)["response"]
 
-        start_time = response["response"]["start_time"]
-        end_time = response["response"]["end_time"]
+        if "insufficient_context" in response:
+            return {
+                "type": "insufficient_context",
+                "message": response["insufficient_context"],
+            }
+        elif "greeting" in response:
+            return {
+                "type": "greeting",
+                "message": response["greeting"],
+            }
+        elif "invalid_query" in response:
+            return {
+                "type": "invalid_query",
+                "message": "OOps the query is out of the context for me. Kindly ask something relevant.",
+            }
+        elif "llm_failure" in response:
+            return {
+                "type": "llm_failure",
+                "message": "something went wrong!",
+            }
+
+        start_time = response["start_time"]
+        end_time = response["end_time"]
 
         # start_time = '2025-06-20T14:00:00+05:30'
         # end_time = '2025-06-20T15:00:00+05:30'
@@ -98,30 +114,23 @@ def main(chat_history, now):
             }
 
             create_event(service, event)
-            return {"success": True, "response": "event created"}
+            return {"type": "event_created", 
+                    "message" : "Wow, call has been scheduled successfully, please check your inbox."}
         else:
             print("OOps, Time slot is busy!")
-            return {"success": False, "response": "slot occupied"}
+            return {
+                "type": "slot_occupied",
+                "message": "Luna: Hey, you already have this slot occupied, lets choose some other one.\nUser: "
+            }
 
-    except HttpError as error:
-        print(f"An error occurred: {error}")
+    except Exception as error:
+        return {"message": "something went wrong!"}
+        # print(f"An error occurred: {error}")
 
 
 if __name__ == "__main__":
-    chat_history = [
-        # "how are you?",
-        # "I need to meet for 45 minutes sometime before my flight that leaves on Friday at 6 PM",
-        # "have some plans for today.",
-        # "need to check fot some other day.",
-    ]
-
-    insuffficient_context_replies = [
-        "Can you please let me know about the date and time you want to schedule the call?",
-        "Please enter the timing details of the meet.",
-        "Kindly share the time information you are free to schedule the call.",
-        "Please share the time and date you want me to book the call",
-    ]
-
+    
+    chat_history = []
     now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
     user_input = input(
         "Luna: Hi, I'm Luna. I am here to help you to schedule your next meeting. Please enter 'exit' to stop the conversation! \nUser: "
@@ -130,23 +139,17 @@ if __name__ == "__main__":
     while True:
         if user_input == "exit":
             break
-        print("User input: ", user_input)
         chat_history.append("User : " + user_input)
         response = main(chat_history, now)
-        if response["response"] == "insufficient context":
-            user_input = input(
-                "Luna: " + insuffficient_context_replies[randint(0, 3)] + "\nUser: "
-            )
-            chat_history.append("Bot: " + insuffficient_context_replies[randint(0, 4)])
-        elif response["response"] == "slot occupied":
-            user_input = input(
-                "Luna: Hey, you already have this slot occupied, lets choose some other one.\nUser: "
-            )
-            chat_history.append(
-                "Bot: Hey, you already have this slot occupied, lets choose some other one."
-            )
-        elif response["response"] == "event created":
-            print(
-                "Luna: Hey, call has been scheduled, please check your email."
-            )
+
+        if response["type"] == "event_created":
+            print("Luna: Hey, call has been scheduled, please check your email.")
             break
+        elif response["message"] == "llm_failure":
+            print("Something went wrong, lets try again!")
+            break
+        else:
+                user_input = input(
+                    "Luna: " + response["message"]+ "\nUser: "
+                )
+                chat_history.append("Bot: " + response["message"])
