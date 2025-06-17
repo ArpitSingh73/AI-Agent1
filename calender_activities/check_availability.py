@@ -3,6 +3,7 @@ module to check if a slot is free or not?
 """
 
 def is_slot_free(service, start_time, end_time):
+    print("Luna: Checking if slot is free or not?")
     body = {"timeMin": start_time, "timeMax": end_time, "items": [{"id": "primary"}]}
     events_result = service.freebusy().query(body=body).execute()
     busy_times = events_result["calendars"]["primary"]["busy"]

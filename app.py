@@ -7,6 +7,9 @@ from googleapiclient.discovery import build
 from calender_activities.book_slot import create_event
 from calender_activities.check_availability import is_slot_free
 from llm_activities.user_bot_conversation import extract_date_time
+from voice_processing.text_to_speech import convert_text_to_speech
+from voice_processing.take_user_input import listen_to_user
+
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
@@ -58,9 +61,16 @@ def main(chat_history, now):
         upcoming_events = []
         for event in events:
             start = event["start"].get("dateTime", event["start"].get("date"))
+            end = event["end"].get("dateTime", event["end"].get("date"))
             upcoming_events.append(str(event["summary"]))
-            print(start, event["summary"])
-
+            # print(start, end , event["summary"])
+            event_info = {
+                "start_time": start,
+                "end_time": end,
+                "event": event["summary"],
+            }
+            upcoming_events.append(event_info)
+            
         response = extract_date_time(chat_history, now, upcoming_events)["response"]
 
         if "insufficient_context" in response:
@@ -91,7 +101,8 @@ def main(chat_history, now):
         # end_time = '2025-06-20T15:00:00+05:30'
 
         if is_slot_free(service, start_time, end_time):
-            print("Time slot is free!")
+            print("Luna: Time slot is free! Give me a moment to book it.")
+            # convert_text_to_speech("Nice, suggested slot is free and I am booking it.")
             event = {
                 "summary": "Team Meeting",
                 "location": "Conference Room",
@@ -114,13 +125,15 @@ def main(chat_history, now):
             }
 
             create_event(service, event)
-            return {"type": "event_created", 
-                    "message" : "Wow, call has been scheduled successfully, please check your inbox."}
+            return {
+                "type": "event_created",
+                "message": "Wow, call has been scheduled successfully, please check your inbox.",
+            }
         else:
             print("OOps, Time slot is busy!")
             return {
                 "type": "slot_occupied",
-                "message": "Luna: Hey, you already have this slot occupied, lets choose some other one.\nUser: "
+                "message": "Luna: Hey, you already have this slot occupied, lets choose some other one. ",
             }
 
     except Exception as error:
@@ -129,27 +142,41 @@ def main(chat_history, now):
 
 
 if __name__ == "__main__":
-    
+
     chat_history = []
     now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
-    user_input = input(
-        "Luna: Hi, I'm Luna. I am here to help you to schedule your next meeting. Please enter 'exit' to stop the conversation! \nUser: "
-    )
+    # user_input = input(
+    #     "Luna: Hi, I'm Luna. I am here to help you to schedule your next meeting. Please enter 'exit' to stop the conversation! \nUser: "
+    # )
+    print("Luna: Hi I am luna, how can I assist you today?")
+    convert_text_to_speech("Hi I am luna, how can I assist you today?")
 
     while True:
-        if user_input == "exit":
+        user_input = listen_to_user()
+        if not user_input:
             break
+        if user_input.lower() in ["exit", "quit"]:
+            break
+
         chat_history.append("User : " + user_input)
         response = main(chat_history, now)
 
         if response["type"] == "event_created":
             print("Luna: Hey, call has been scheduled, please check your email.")
+            convert_text_to_speech(
+                "Hey, call has been scheduled, please check your email."
+            )
             break
         elif response["message"] == "llm_failure":
-            print("Something went wrong, lets try again!")
+            print("Luna: Something went wrong, lets try again!")
+            convert_text_to_speech("Something went wrong, lets try again!")
+            # speak_text(response["message"])
             break
         else:
-                user_input = input(
-                    "Luna: " + response["message"]+ "\nUser: "
-                )
-                chat_history.append("Bot: " + response["message"])
+            # user_input = input(
+            #     "Luna: " + response["message"]+ "\nUser: "
+            # )
+            user_input = listen_to_user()
+            chat_history.append("Bot: " + response["message"])
+            print("Luna: " + response["message"])
+            convert_text_to_speech(response["message"])
