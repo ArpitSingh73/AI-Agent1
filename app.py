@@ -42,10 +42,9 @@ def main(chat_history, now):
         service = build("calendar", "v3", credentials=creds) # create a calender service
         upcoming_events = fetch_calender_events(service, now) # call calender API to cheeck for events
         response = extract_date_time(chat_history, now, upcoming_events)["response"] # use agentic logic to extract date and time
-        print("in main 1", response)
         response = analyze_agent_response(response) # take actions according to agent Luna
-        print("in main 2", response)
-        if "type" in response:
+
+        if "type" in response: # agent needs more details to schedule a call
             return response
         
         start_time = response["start_time"]
