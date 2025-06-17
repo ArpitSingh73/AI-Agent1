@@ -24,7 +24,7 @@ def main(chat_history, now):
     Main function to handle user query.
     """
     creds = None
-     
+
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
     # If there are no (valid) credentials available, let the user log in.
@@ -46,20 +46,23 @@ def main(chat_history, now):
 
         if "type" in response: # agent needs more details to schedule a call
             return response
-        
+
         start_time = response["start_time"]
         end_time = response["end_time"]
 
+        convert_text_to_speech("let me check the availability of specified slot.")
+ 
         if check_slot_and_book(service, start_time, end_time): # if slot is empty, book it else inform the user
-            print("Luna: Time slot is free! Give me a moment to book it.")
-            
+            convert_text_to_speech("Time slot is free! Give me a moment to book it.")
+
             return {
                 "type": "event_created",
                 "message": "Wow, call has been scheduled successfully, please check your inbox.",
             }
         else:
             convert_text_to_speech("The specified slot os already occupied, lets try other options.")
-            print("Luna: OOps, Time slot is busy!")
+            print("Luna: The specified slot os already occupied, lets try other options.")
+
             return {
                 "type": "slot_occupied",
                 "message": "Luna: Hey, you already have this slot occupied, lets choose some other one. ",
