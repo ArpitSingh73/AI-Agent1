@@ -1,6 +1,6 @@
+"""
+module for taking voice inputs from users."""
 import speech_recognition as sr
-from voice_processing.text_to_speech import convert_text_to_speech
-
 
 def listen_to_user( ):
     recognizer = sr.Recognizer()

@@ -1,3 +1,6 @@
+"""
+mode for converting text to speech.
+"""
 from playsound import playsound
 import tempfile
 import os

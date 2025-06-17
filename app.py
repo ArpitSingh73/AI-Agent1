@@ -1,12 +1,17 @@
+"""
+main file of the app.
+"""
+
 import datetime
 import os.path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from calender_activities.book_slot import create_event
-from calender_activities.check_availability import is_slot_free
+from calender_activities.fetch_events import fetch_calender_events
+from calender_activities.check_availability import check_slot_and_book
 from llm_activities.user_bot_conversation import extract_date_time
+from llm_activities.analyze_agent_response import analyze_agent_response
 from voice_processing.text_to_speech import convert_text_to_speech
 from voice_processing.take_user_input import listen_to_user
 
@@ -14,15 +19,12 @@ from voice_processing.take_user_input import listen_to_user
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-
 def main(chat_history, now):
-    """Shows basic usage of the Google Calendar API.
-    Prints the start and name of the next 10 events on the user's calendar.
+    """
+    Main function to handle user query.
     """
     creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
+     
     if os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
     # If there are no (valid) credentials available, let the user log in.
@@ -37,119 +39,44 @@ def main(chat_history, now):
             token.write(creds.to_json())
 
     try:
-        service = build("calendar", "v3", credentials=creds)
-
-        # Call the Calendar API
-        events_result = (
-            service.events()
-            .list(
-                calendarId="primary",
-                timeMin=now,
-                maxResults=10,
-                singleEvents=True,
-                orderBy="startTime",
-            )
-            .execute()
-        )
-        events = events_result.get("items", [])
-
-        # if not events:
-        #     print("No upcoming events found.")
-        #     return
-
-        # # Prints the start and name of the next 10 events
-        upcoming_events = []
-        for event in events:
-            start = event["start"].get("dateTime", event["start"].get("date"))
-            end = event["end"].get("dateTime", event["end"].get("date"))
-            upcoming_events.append(str(event["summary"]))
-            # print(start, end , event["summary"])
-            event_info = {
-                "start_time": start,
-                "end_time": end,
-                "event": event["summary"],
-            }
-            upcoming_events.append(event_info)
-            
-        response = extract_date_time(chat_history, now, upcoming_events)["response"]
-
-        if "insufficient_context" in response:
-            return {
-                "type": "insufficient_context",
-                "message": response["insufficient_context"],
-            }
-        elif "greeting" in response:
-            return {
-                "type": "greeting",
-                "message": response["greeting"],
-            }
-        elif "invalid_query" in response:
-            return {
-                "type": "invalid_query",
-                "message": "OOps the query is out of the context for me. Kindly ask something relevant.",
-            }
-        elif "llm_failure" in response:
-            return {
-                "type": "llm_failure",
-                "message": "something went wrong!",
-            }
-
+        service = build("calendar", "v3", credentials=creds) # create a calender service
+        upcoming_events = fetch_calender_events(service, now) # call calender API to cheeck for events
+        response = extract_date_time(chat_history, now, upcoming_events)["response"] # use agentic logic to extract date and time
+        print("in main 1", response)
+        response = analyze_agent_response(response) # take actions according to agent Luna
+        print("in main 2", response)
+        if "type" in response:
+            return response
+        
         start_time = response["start_time"]
         end_time = response["end_time"]
 
-        # start_time = '2025-06-20T14:00:00+05:30'
-        # end_time = '2025-06-20T15:00:00+05:30'
-
-        if is_slot_free(service, start_time, end_time):
+        if check_slot_and_book(service, start_time, end_time): # if slot is empty, book it else inform the user
             print("Luna: Time slot is free! Give me a moment to book it.")
-            # convert_text_to_speech("Nice, suggested slot is free and I am booking it.")
-            event = {
-                "summary": "Team Meeting",
-                "location": "Conference Room",
-                "description": "Discuss project updates.",
-                "start": {
-                    "dateTime": start_time,
-                    "timeZone": "Asia/Kolkata",
-                },
-                "end": {
-                    "dateTime": end_time,
-                    "timeZone": "Asia/Kolkata",
-                },
-                "attendees": [
-                    {"email": "arpitsingh73073@gmail.com"},
-                    {"email": "arpit21116@recmainpuri.in"},
-                ],
-                "reminders": {
-                    "useDefault": True,
-                },
-            }
-
-            create_event(service, event)
+            
             return {
                 "type": "event_created",
                 "message": "Wow, call has been scheduled successfully, please check your inbox.",
             }
         else:
-            print("OOps, Time slot is busy!")
+            convert_text_to_speech("The specified slot os already occupied, lets try other options.")
+            print("Luna: OOps, Time slot is busy!")
             return {
                 "type": "slot_occupied",
                 "message": "Luna: Hey, you already have this slot occupied, lets choose some other one. ",
             }
 
     except Exception as error:
-        return {"message": "something went wrong!"}
-        # print(f"An error occurred: {error}")
+        print(error)
+        return {"type":"llm_failure" ,"message": "something went wrong!"}
 
 
 if __name__ == "__main__":
 
     chat_history = []
     now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
-    # user_input = input(
-    #     "Luna: Hi, I'm Luna. I am here to help you to schedule your next meeting. Please enter 'exit' to stop the conversation! \nUser: "
-    # )
-    print("Luna: Hi I am luna, how can I assist you today?")
     convert_text_to_speech("Hi I am luna, how can I assist you today?")
+    print("Luna: Hi I am luna, how can I assist you today?")
 
     while True:
         user_input = listen_to_user()
@@ -159,24 +86,20 @@ if __name__ == "__main__":
             break
 
         chat_history.append("User : " + user_input)
-        response = main(chat_history, now)
+        response = main(chat_history, now) 
 
         if response["type"] == "event_created":
-            print("Luna: Hey, call has been scheduled, please check your email.")
             convert_text_to_speech(
                 "Hey, call has been scheduled, please check your email."
             )
+            print("Luna: Hey, call has been scheduled, please check your email.")
             break
         elif response["message"] == "llm_failure":
-            print("Luna: Something went wrong, lets try again!")
             convert_text_to_speech("Something went wrong, lets try again!")
-            # speak_text(response["message"])
+            print("Luna: Something went wrong, lets try again!")
             break
         else:
-            # user_input = input(
-            #     "Luna: " + response["message"]+ "\nUser: "
-            # )
             user_input = listen_to_user()
             chat_history.append("Bot: " + response["message"])
-            print("Luna: " + response["message"])
             convert_text_to_speech(response["message"])
+            print("Luna: " + response["message"])
