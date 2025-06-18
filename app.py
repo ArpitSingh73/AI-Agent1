@@ -3,6 +3,7 @@ main file of the app.
 """
 
 import datetime
+import json
 import os.path
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -10,14 +11,16 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from calender_activities.fetch_events import fetch_calender_events
 from calender_activities.check_availability import check_slot_and_book
-from llm_activities.user_bot_conversation import extract_date_time
-from llm_activities.analyze_agent_response import analyze_agent_response
-from voice_processing.text_to_speech import convert_text_to_speech
-from voice_processing.take_user_input import listen_to_user
+from agent_activities.user_bot_conversation import extract_date_time
+from agent_activities.analyze_agent_response import analyze_agent_response
+from text_speech_activities.text_to_speech import convert_text_to_speech
+from text_speech_activities.take_user_input import listen_to_user
+from agent_activities.save_chat_history import save_context
 
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
 
 def main(chat_history, now):
     """
@@ -39,20 +42,30 @@ def main(chat_history, now):
             token.write(creds.to_json())
 
     try:
-        service = build("calendar", "v3", credentials=creds) # create a calender service
-        upcoming_events = fetch_calender_events(service, now) # call calender API to cheeck for events
-        response = extract_date_time(chat_history, now, upcoming_events)["response"] # use agentic logic to extract date and time
-        response = analyze_agent_response(response) # take actions according to agent Luna
+        service = build(
+            "calendar", "v3", credentials=creds
+        )  # create a calender service
+        upcoming_events = fetch_calender_events(
+            service, now
+        )  # call calender API to cheeck for events
+        response = extract_date_time(chat_history, now, upcoming_events)[
+            "response"
+        ]  # use agentic logic to extract date and time
+        response = analyze_agent_response(
+            response
+        )  # take actions according to agent Luna
 
-        if "type" in response: # agent needs more details to schedule a call
+        if "type" in response:  # agent needs more details to schedule a call
             return response
 
         start_time = response["start_time"]
         end_time = response["end_time"]
 
         convert_text_to_speech("let me check the availability of specified slot.")
- 
-        if check_slot_and_book(service, start_time, end_time): # if slot is empty, book it else inform the user
+
+        if check_slot_and_book(
+            service, start_time, end_time
+        ):  # if slot is empty, book it else inform the user
             convert_text_to_speech("Time slot is free! Give me a moment to book it.")
 
             return {
@@ -60,8 +73,12 @@ def main(chat_history, now):
                 "message": "Wow, call has been scheduled successfully, please check your inbox.",
             }
         else:
-            convert_text_to_speech("The specified slot os already occupied, lets try other options.")
-            print("Luna: The specified slot os already occupied, lets try other options.")
+            convert_text_to_speech(
+                "The specified slot os already occupied, lets try other options."
+            )
+            print(
+                "Luna: The specified slot os already occupied, lets try other options."
+            )
 
             return {
                 "type": "slot_occupied",
@@ -70,31 +87,44 @@ def main(chat_history, now):
 
     except Exception as error:
         print(error)
-        return {"type":"llm_failure" ,"message": "something went wrong!"}
+        return {"type": "llm_failure", "message": "something went wrong!"}
 
 
 if __name__ == "__main__":
 
+    # Check if file exists
+    filename = "context.json"
     chat_history = []
+
+    if os.path.isfile(filename):
+        # Read existing data
+        with open(filename, "r") as file:
+            try:
+                chat_history = json.load(file)
+            except json.JSONDecodeError:
+                chat_history = []
+    else:
+        chat_history = []
+
     now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
     convert_text_to_speech("Hi I am luna, how can I assist you today?")
     print("Luna: Hi I am luna, how can I assist you today?")
 
     while True:
         user_input = listen_to_user()
-        if not user_input:
-            break
-        if user_input.lower() in ["exit", "quit"]:
+        if not user_input or user_input.lower() in ["exit", "quit"]:
             break
 
         chat_history.append("User : " + user_input)
-        response = main(chat_history, now) 
+        save_context("User : " + user_input)
+        response = main(chat_history, now)
 
         if response["type"] == "event_created":
             convert_text_to_speech(
                 "Hey, call has been scheduled, please check your email."
             )
             print("Luna: Hey, call has been scheduled, please check your email.")
+            os.remove(filename)  # delete the context
             break
         elif response["message"] == "llm_failure":
             convert_text_to_speech("Something went wrong, lets try again!")
@@ -103,5 +133,6 @@ if __name__ == "__main__":
         else:
             user_input = listen_to_user()
             chat_history.append("Bot: " + response["message"])
+            save_context("Bot: " + response["message"])
             convert_text_to_speech(response["message"])
             print("Luna: " + response["message"])
