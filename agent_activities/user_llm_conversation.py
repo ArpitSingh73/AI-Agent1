@@ -12,6 +12,11 @@ load_dotenv(".env")
 def extract_date_time(chat_history: list, date_and_time: str, upcoming_events):
 
     try:
+        print(upcoming_events)
+        print(date_and_time)
+
+        if len(upcoming_events) == 0:
+            upcoming_events.append("No events are scheduled for the specified time range.")
 
         print("Luna: Processing your query .... give me a moment please.")
         gemini_prompt = os.environ.load("GEMINI_PROMPT")
@@ -19,11 +24,12 @@ def extract_date_time(chat_history: list, date_and_time: str, upcoming_events):
         model = genai.GenerativeModel(
             model_name=os.environ.get("GEMINI_MODEL"),
             system_instruction=f"""{gemini_prompt}""",
-            
+           
             generation_config={"response_mime_type": "application/json"},
         )
         response = model.generate_content(chat_history)
         response = json.loads(response.text)
+        print(response)
 
         return {"success": True, "response": response}
     except Exception as e:

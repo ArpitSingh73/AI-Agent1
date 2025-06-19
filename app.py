@@ -2,7 +2,8 @@
 main file of the app.
 """
 
-import datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import json
 import os.path
 from google.auth.transport.requests import Request
@@ -11,12 +12,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from calender_activities.fetch_events import fetch_calender_events
 from calender_activities.check_availability import check_slot_and_book
-from agent_activities.user_bot_conversation import extract_date_time
+from agent_activities.user_llm_conversation import extract_date_time
 from agent_activities.analyze_agent_response import analyze_agent_response
 from text_speech_activities.text_to_speech import convert_text_to_speech
 from text_speech_activities.take_user_input import listen_to_user
 from agent_activities.save_chat_history import save_context
-
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
@@ -42,6 +42,7 @@ def main(chat_history, now):
             token.write(creds.to_json())
 
     try:
+
         service = build(
             "calendar", "v3", credentials=creds
         )  # create a calender service
@@ -106,7 +107,14 @@ if __name__ == "__main__":
     else:
         chat_history = []
 
-    now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+    # Get current time in UTC
+    now_utc = datetime.now(tz=ZoneInfo("UTC"))
+    # Convert to IST timezone
+    now_ist = now_utc.astimezone(ZoneInfo("Asia/Kolkata"))
+    # Get ISO format string
+    now = now_ist.isoformat() 
+    main([], now)
+    # now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
     convert_text_to_speech("Hi I am luna, how can I assist you today?")
     print("Luna: Hi I am luna, how can I assist you today?")
 

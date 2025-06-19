@@ -29,7 +29,7 @@ def fetch_calender_events(service, now):
                 "event": event["summary"],
             }
             upcoming_events.append(event_info)
-            return upcoming_events
+        return upcoming_events
     except Exception as e:
         print(e) 
         return []       
