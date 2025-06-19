@@ -112,8 +112,7 @@ if __name__ == "__main__":
     # Convert to IST timezone
     now_ist = now_utc.astimezone(ZoneInfo("Asia/Kolkata"))
     # Get ISO format string
-    now = now_ist.isoformat() 
-    main([], now)
+    now = now_ist.isoformat()
     # now = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
     convert_text_to_speech("Hi I am luna, how can I assist you today?")
     print("Luna: Hi I am luna, how can I assist you today?")
